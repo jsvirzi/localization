@@ -1,5 +1,10 @@
 #include "math.h"
 
+#include <TROOT.h>
+#include <TMatrixD.h>
+#include <TApplication.h>
+#include <TRandom3.h>
+
 double root2 = 1.414;
 
 typedef struct {
@@ -10,7 +15,71 @@ typedef struct {
 	double x1, y1, z1, x2, y2, z2;
 } Interval;
 
+double getPlane(Vector3 *points, int nPoints, double *theta);
+
 int main(int argc, char **argv) {
+	printf("hello world\n");
+	double theta0[3];
+	theta0[0] = 1.0;
+	theta0[1] = 2.0;
+	theta0[2] = 3.0;
+	int nPoints = 1024;
+	Vector3 *points = new Vector3 [ nPoints ];
+	TRandom3 random;
+	double a = 1.0, b = 1.5, c = 2.0, d = 1.0;
+	for(int i=0;i<nPoints;++i) {
+		double x = random.Uniform(1.0);
+		double y = random.Uniform(1.0);
+		double z = (-d - a * x - b * y) / c;
+		points[i].x = x;
+		points[i].y = y;
+		points[i].z = z;
+	}
+	double theta[3];
+	double det = getPlane(points, nPoints, theta);
+	printf("det = %f\n", det);
+}
+
+double getPlane(Vector3 *points, int nPoints, double *theta) {
+	double sumXX = 0.0, sumXY = 0.0, sumXZ = 0.0, sumYY = 0.0, sumYZ = 0.0, sumZZ = 0.0;
+	double sumX = 0.0, sumY = 0.0, sumZ = 0.0;
+	for(int i=0;i<nPoints;++i) {
+		double x = points[i].x;
+		double y = points[i].y;
+		double z = points[i].z;
+		sumX += x;
+		sumY += y;
+		sumZ += z;
+		sumXX += x * x;
+		sumXY += x * y;
+		sumXZ += x * z;
+		sumYY += y * y;
+		sumYZ += y * z;
+		sumZZ += z * z;
+	}
+	TMatrixD matrix(3, 3);
+	matrix[0][0] = sumXX;
+	matrix[0][1] = sumXY;
+	matrix[0][2] = sumXZ;
+	matrix[1][0] = sumXY;
+	matrix[1][1] = sumYY;
+	matrix[1][2] = sumYZ;
+	matrix[2][0] = sumXZ;
+	matrix[2][1] = sumYZ;
+	matrix[2][2] = sumZZ;
+	double n[3];
+	n[0] = -sumX;
+	n[1] = -sumY;
+	n[2] = -sumZ;
+	double det0 = matrix.Determinant();
+	for(int i=0;i<3;++i) {
+		TMatrixD M(3, 3);
+		for(int j=0;j<3;++j) { for(int k=0;k<3;++k) { M[j][k] = matrix[j][k]; } }
+		for(int j=0;j<3;++j) { M[j][i] = n[j]; }
+		double det = M.Determinant();
+		theta[i] = det / det0;
+	}
+	return det0;
 }
 
 int crossProduct(Vector3 *u, Vector3 *v, Vector3 *n, int normalize) {
@@ -90,7 +159,7 @@ int getPlane(Interval *interval, int nIntervals, Vector3 *p, Vector3 *n) {
 		l2 = intervalLength(&interval[2]);
 		z1 = z0 - 0.5 * l1; 
 		z2 = z0 - 0.5 * l2;
-		estimateCenter(&interval[0], 
+//		estimateCenter(&interval[0],
 	}
 }
 
@@ -101,8 +170,8 @@ int estimateCenter(Interval *interval, Vector3 *planeNormal, double length, Vect
 	v.z = interval->z2 - interval->z1;
 	Vector3 n;
 	crossProduct(planeNormal, &v, &n, 1); 
-	center->x = 0.5 * (interval->x1 + interval->x2) + nx * length;
-	center->y = 0.5 * (interval->y1 + interval->y2) + ny * length;
-	center->z = 0.5 * (interval->z1 + interval->z2) + nz * length;
+	center->x = 0.5 * (interval->x1 + interval->x2) + n.x * length;
+	center->y = 0.5 * (interval->y1 + interval->y2) + n.y * length;
+	center->z = 0.5 * (interval->z1 + interval->z2) + n.z * length;
 }
 
