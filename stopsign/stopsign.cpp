@@ -16,16 +16,24 @@ typedef struct {
 } Interval;
 
 double getPlane(Vector3 *points, int nPoints, double *theta);
+double solveLinearSystem(TMatrixD &matrix, double *b, double *x);
 
 int main(int argc, char **argv) {
 	printf("hello world\n");
+
 	double theta0[3];
 	theta0[0] = 1.0;
 	theta0[1] = 2.0;
 	theta0[2] = 3.0;
-	int nPoints = 1024;
+
+	int nPoints = 3 * 250;
 	Vector3 *points = new Vector3 [ nPoints ];
 	TRandom3 random;
+
+#if 0
+	/*
+	 * generate random points on a plane
+	 */
 	double a = 1.0, b = 1.5, c = 2.0, d = 1.0;
 	for(int i=0;i<nPoints;++i) {
 		double x = random.Uniform(1.0);
@@ -35,9 +43,89 @@ int main(int argc, char **argv) {
 		points[i].y = y;
 		points[i].z = z;
 	}
+#endif
+
+	/*
+	 * generate a grate
+	 */
+	double alpha = 5.0 * M_PI / 180.0;
+	double sigma = 2.0; /* 2 cm undertainty */
+	double tanAlpha = tan(alpha);
+	double m[3], b[3], l[3];
+	m[0] = 0.01, m[1] = 0.012, m[2] = 0.08;
+	b[0] = 100.0, b[1] = 105.1, b[2] = 110.1;
+	l[0] = 30.0, l[1] = 42.0, l[2] = 28; // TODO more consistent numbers
+
+	int j, k = 200;
+	for(j=0;j<3;++j) {
+		double x1 = -l[j] / 2.0, x2 = l[j] / 2.0;
+		double y1 = b[j] - 0.1, y2 = b[j] + 0.1;
+		double z1 = -l[j] / 2.0 * tanAlpha, z2 = l[j] / 2.0 * tanAlpha;
+		int index = 0;
+		for (int i = 0; i < k; ++i, ++index) {
+			double t = (double) i / (double) k;
+			double x = x1 + t * (x2 - x1);
+			double y = y1 + t * (y2 - y1);
+			double z = z1 + t * (z2 - z1);
+			points[index].x = random.Gaus(x, sigma);
+			points[index].y = random.Gaus(y, sigma);
+			points[index].z = random.Gaus(z, sigma);
+		}
+	}
+
+
 	double theta[3];
 	double det = getPlane(points, nPoints, theta);
 	printf("det = %f\n", det);
+}
+
+// TODO not tested
+void projectPointOntoPlane(Vector3 &n, Vector3 &p0, Vector3 &p) {
+	TMatrixD matrix(3, 3);
+	matrix[0][0] = matrix[1][1] = matrix[2][2] = 0.0;
+	matrix[0][1] = -n[2];
+	matrix[0][2] = n[1];
+	matrix[1][0] = n[2];
+	matrix[1][2] = -n[0];
+	matrix[2][0] = -n[1];
+	matrix[2][2] = n[0];
+	double b[3], x[3];
+	b[0] = n[1] * p0[2] - n[2] * p0[1];
+	b[1] = n[2] * p0[0] - n[0] * p0[2];
+	b[2] = n[0] * p0[1] - n[1] * p0[0];
+	solveLinearSystem(matrix, b, x);
+	p.x = x[0];
+	p.y = x[1];
+	p.z = x[2];
+}
+
+/*
+ * solve Mx = b
+ */
+double solveLinearSystem(TMatrixD &matrix, Vector3 &b, Vector3 &x) {
+	double bNew[3];
+	double xNew[3];
+	bNew[0] = b.x;
+	bNew[1] = b.y;
+	bNew[2] = b.z;
+	double det = solveLinearSystem(matrix, bNew, xNew);
+	x.x = xNew[0];
+	x.y = xNew[1];
+	x.z = xNew[2];
+	return det;
+}
+
+double solveLinearSystem(TMatrixD &matrix, double *b, double *x) {
+	double det0 = matrix.Determinant();
+	if (det0 == 0.0) return det0;
+	for(int i=0;i<3;++i) {
+		TMatrixD M(3, 3);
+		for(int j=0;j<3;++j) { for(int k=0;k<3;++k) { M[j][k] = matrix[j][k]; } }
+		for(int j=0;j<3;++j) { M[j][i] = b[j]; }
+		double det = M.Determinant();
+		x[i] = det / det0;
+	}
+	return det0;
 }
 
 double getPlane(Vector3 *points, int nPoints, double *theta) {
@@ -71,14 +159,17 @@ double getPlane(Vector3 *points, int nPoints, double *theta) {
 	n[0] = -sumX;
 	n[1] = -sumY;
 	n[2] = -sumZ;
-	double det0 = matrix.Determinant();
-	for(int i=0;i<3;++i) {
-		TMatrixD M(3, 3);
-		for(int j=0;j<3;++j) { for(int k=0;k<3;++k) { M[j][k] = matrix[j][k]; } }
-		for(int j=0;j<3;++j) { M[j][i] = n[j]; }
-		double det = M.Determinant();
-		theta[i] = det / det0;
-	}
+
+	double det0 = solveLinearSystem(matrix, n, theta);
+
+//	double det0 = matrix.Determinant();
+//	for(int i=0;i<3;++i) {
+//		TMatrixD M(3, 3);
+//		for(int j=0;j<3;++j) { for(int k=0;k<3;++k) { M[j][k] = matrix[j][k]; } }
+//		for(int j=0;j<3;++j) { M[j][i] = n[j]; }
+//		double det = M.Determinant();
+//		theta[i] = det / det0;
+//	}
 	return det0;
 }
 
