@@ -17,6 +17,8 @@ typedef struct {
 
 double getPlane(Vector3 *points, int nPoints, double *theta);
 double solveLinearSystem(TMatrixD &matrix, double *b, double *x);
+int generateGrate(double *m, double *b, double *delta, double *l, int nGrates,
+				  Vector3 points, int nPoints);
 
 int main(int argc, char **argv) {
 	printf("hello world\n");
@@ -49,28 +51,26 @@ int main(int argc, char **argv) {
 	 * generate a grate
 	 */
 	double alpha = 5.0 * M_PI / 180.0;
-	double sigma = 2.0; /* 2 cm undertainty */
-	double tanAlpha = tan(alpha);
-	double m[3], b[3], l[3];
-	m[0] = 0.01, m[1] = 0.012, m[2] = 0.08;
-	b[0] = 100.0, b[1] = 105.1, b[2] = 110.1;
-	l[0] = 30.0, l[1] = 42.0, l[2] = 28; // TODO more consistent numbers
-
-	int j, k = 200;
-	for(j=0;j<3;++j) {
-		double x1 = -l[j] / 2.0, x2 = l[j] / 2.0;
-		double y1 = b[j] - 0.1, y2 = b[j] + 0.1;
-		double z1 = -l[j] / 2.0 * tanAlpha, z2 = l[j] / 2.0 * tanAlpha;
-		int index = 0;
-		for (int i = 0; i < k; ++i, ++index) {
-			double t = (double) i / (double) k;
-			double x = x1 + t * (x2 - x1);
-			double y = y1 + t * (y2 - y1);
-			double z = z1 + t * (z2 - z1);
-			points[index].x = random.Gaus(x, sigma);
-			points[index].y = random.Gaus(y, sigma);
-			points[index].z = random.Gaus(z, sigma);
-		}
+	double sigma = 2.0; /* 2 cm uncertainty */
+	double sinAlpha = sin(alpha), cosAlpha = cos(alpha);
+	double m[3], b[3], length[3];
+	Interval grateInterval[3];
+	Vector3 origin = { 0.0, 0.0, 0.0 };
+	// first work out the coordinates in the stop sign plane with origin at the center
+	m[0] = 0.01, m[1] = 0.012, m[2] = 0.08; // nominally 0.01
+	b[0] = -20.0, b[1] = -0.1, b[2] = 20.1; // nominally -20, 0, 20
+	length[0] = 30.0, length[1] = 42.0, length[2] = 28; // TODO more consistent numbers
+	int iGrate, nGrates = 3;
+	for(iGrate=0;iGrate<nGrates;++iGrate) {
+		Interval *interval = &grateInterval[iGrate];
+		double a = 0.5 * length[iGrate];
+		interval->x1 = origin.x - a;
+		interval->x2 = origin.x + a;
+		interval->y1 = origin.y + b[iGrate] - a * sinAlpha; // only y picks up a component
+		interval->y2 = origin.y + b[iGrate] + a * sinAlpha;
+		interval->z1 = origin.z;
+		interval->z2 = origin.z;
+		rotateZ(interval, alpha);
 	}
 
 
@@ -266,3 +266,66 @@ int estimateCenter(Interval *interval, Vector3 *planeNormal, double length, Vect
 	center->z = 0.5 * (interval->z1 + interval->z2) + n.z * length;
 }
 
+int generateGrate(Interval *grates, int nGrates, Vector3 *points, int nPoints) {
+	double acc = 0.0, length = 0.0;
+	int iGrate, index;
+	for(iGrate=0;iGrate<nGrates;++iGrate) { length += intervalLength(&grates[iGrate]); }
+	int *n = new int [ nGrates ];
+	acc = 0.0;
+	for(iGrate=0;iGrate<nGrates;++iGrate) {
+		acc += intervalLength(&grates[iGrate]);
+		double fraction = acc / length;
+		n[iGrate] = (int)(fraction * nPoints);
+		if(n[iGrate] > nPoints) {
+			n[iGrate] = nPoints;
+		}
+	}
+	for(iGrate=(nGrates-1);iGrate>0;--iGrate) {
+		n[iGrate] = n[iGrate] - n[iGrate-1];
+	}
+	for(iGrate=0;iGrate<nGrates;++iGrate) {
+		for (int j = 0; j < n[iGrate]; ++j, ++index) {
+			double t = (double)(n[iGrate] - 1); /* -1 so range of j covers full range of interval */
+			t = (double) j / (double) (n[iGrate]- 1);
+			double x = x1 + t * (x2 - x1);
+			double y = y1 + t * (y2 - y1);
+			double z = z1 + t * (z2 - z1);
+			points[index].x = random.Gaus(x, sigma);
+			points[index].y = random.Gaus(y, sigma);
+			points[index].z = random.Gaus(z, sigma);
+			if(index >= nPoints) { break; } /* shouldn't really happen */
+		}
+	}
+	return 0;
+}
+
+int generateGrate(double *m, double *b, double *delta, double *l, int nGrates,
+	Vector3 points, int nPoints) {
+    int i, j, k, kPrev, m, n;
+	double acc = 0.0, length = 0.0;
+	for(i=0;i<nGrates;++i) { length += l[i]; }
+	for(i=j=0;i<nGrates;++i) {
+		acc += l[i];
+		double fraction = acc / length;
+		kPrev = k;
+		k = fraction * nPoints;
+		n = k - kPrev;
+		if(k > nPoints) k = nPoints;
+		double x1 = -l[i] / 2.0, x2 = l[i] / 2.0;
+		double y1 = b[i] - 0.1, y2 = b[i] + 0.1;
+		double z1 = -l[i] / 2.0 * tanAlpha, z2 = l[i] / 2.0 * tanAlpha;
+		for (m = 0; j < k; ++j, ++m) {
+			double t = (double) m / (double) n;
+			double x = x1 + t * (x2 - x1);
+			double y = y1 + t * (y2 - y1);
+			double z = z1 + t * (z2 - z1);
+			points[j].x = random.Gaus(x, sigma);
+			points[j].y = random.Gaus(y, sigma);
+			points[j].z = random.Gaus(z, sigma);
+		}
+	}
+    for(j=0;j<3;++j) {
+        int index = 0;
+    }
+
+}
