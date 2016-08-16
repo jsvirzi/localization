@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 3.5)
 project(stopsign)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
@@ -8,7 +8,6 @@ include_directories("${ROOTSYS}/include")
 
 # -L/home/jsvirzi/root/lib -lCore -lCint -lRIO -lNet -lHist -lGraf -lGraf3d -lGpad -lTree -lRint -lPostscript -lMatrix -lPhysics -lMathCore -lThread
 # -pthread -lm -ldl -rdynamic
-
 
 set(SOURCE_FILES stopsign.cpp)
 add_executable(stopsign ${SOURCE_FILES})
