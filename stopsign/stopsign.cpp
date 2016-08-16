@@ -17,8 +17,11 @@ typedef struct {
 
 double getPlane(Vector3 *points, int nPoints, double *theta);
 double solveLinearSystem(TMatrixD &matrix, double *b, double *x);
-int generateGrate(double *m, double *b, double *delta, double *l, int nGrates,
-				  Vector3 points, int nPoints);
+// int generateGrate(double *m, double *b, double *delta, double *l, int nGrates, Vector3 points, int nPoints);
+int generateGrate(Interval *grates, int nGrates, Vector3 *points, int nPoints);
+void projectPointOntoPlane(Vector3 &n, Vector3 &p0, Vector3 &p);
+
+TRandom3 rndm;
 
 int main(int argc, char **argv) {
 	printf("hello world\n");
@@ -30,7 +33,8 @@ int main(int argc, char **argv) {
 
 	int nPoints = 3 * 250;
 	Vector3 *points = new Vector3 [ nPoints ];
-	TRandom3 random;
+
+    rndm = TRandom3();
 
 #if 0
 	/*
@@ -70,29 +74,42 @@ int main(int argc, char **argv) {
 		interval->y2 = origin.y + b[iGrate] + a * sinAlpha;
 		interval->z1 = origin.z;
 		interval->z2 = origin.z;
-		rotateZ(interval, alpha);
 	}
 
+    generateGrate(grateInterval, 3, points, nPoints);
 
-	double theta[3];
-	double det = getPlane(points, nPoints, theta);
+	double unitNormal[3];
+	double det = getPlane(points, nPoints, unitNormal);
 	printf("det = %f\n", det);
+
+    Vector3 *planePoints = new Vector3 [ nPoints ];
+
+    for(int iPoint=0;iPoint<nPoints;++iPoint) {
+        Vector3 p, n;
+        n.x = unitNormal[0];
+        n.y = unitNormal[1];
+        n.z = unitNormal[2];
+        projectPointOntoPlane(n, points[iPoint], planePoints[iPoint]);
+    }
+
 }
 
 // TODO not tested
 void projectPointOntoPlane(Vector3 &n, Vector3 &p0, Vector3 &p) {
 	TMatrixD matrix(3, 3);
-	matrix[0][0] = matrix[1][1] = matrix[2][2] = 0.0;
-	matrix[0][1] = -n[2];
-	matrix[0][2] = n[1];
-	matrix[1][0] = n[2];
-	matrix[1][2] = -n[0];
-	matrix[2][0] = -n[1];
-	matrix[2][2] = n[0];
+	matrix[0][0] = 0.0;
+	matrix[0][1] = -n.z;
+	matrix[0][2] = n.y;
+	matrix[1][0] = n.z;
+    matrix[1][1] = 0.0;
+	matrix[1][2] = -n.x;
+	matrix[2][0] = -n.y;
+    matrix[2][1] = n.x;
+    matrix[2][2] = 0.0;
 	double b[3], x[3];
-	b[0] = n[1] * p0[2] - n[2] * p0[1];
-	b[1] = n[2] * p0[0] - n[0] * p0[2];
-	b[2] = n[0] * p0[1] - n[1] * p0[0];
+	b[0] = n.y * p0.z - n.z * p0.y;
+	b[1] = n.z * p0.x - n.x * p0.z;
+	b[2] = n.x * p0.y - n.y * p0.x;
 	solveLinearSystem(matrix, b, x);
 	p.x = x[0];
 	p.y = x[1];
@@ -128,7 +145,7 @@ double solveLinearSystem(TMatrixD &matrix, double *b, double *x) {
 	return det0;
 }
 
-double getPlane(Vector3 *points, int nPoints, double *theta) {
+double getPlane(Vector3 *points, int nPoints, double *unitNormal) {
 	double sumXX = 0.0, sumXY = 0.0, sumXZ = 0.0, sumYY = 0.0, sumYZ = 0.0, sumZZ = 0.0;
 	double sumX = 0.0, sumY = 0.0, sumZ = 0.0;
 	for(int i=0;i<nPoints;++i) {
@@ -160,7 +177,12 @@ double getPlane(Vector3 *points, int nPoints, double *theta) {
 	n[1] = -sumY;
 	n[2] = -sumZ;
 
-	double det0 = solveLinearSystem(matrix, n, theta);
+	double det0 = solveLinearSystem(matrix, n, unitNormal);
+
+    double a = sqrt(unitNormal[0] * unitNormal[0] + unitNormal[1] * unitNormal[1] + unitNormal[2] * unitNormal[2]);
+    unitNormal[0] = unitNormal[0] / a;
+    unitNormal[1] = unitNormal[1] / a;
+    unitNormal[2] = unitNormal[2] / a;
 
 //	double det0 = matrix.Determinant();
 //	for(int i=0;i<3;++i) {
@@ -170,6 +192,7 @@ double getPlane(Vector3 *points, int nPoints, double *theta) {
 //		double det = M.Determinant();
 //		theta[i] = det / det0;
 //	}
+
 	return det0;
 }
 
@@ -267,8 +290,8 @@ int estimateCenter(Interval *interval, Vector3 *planeNormal, double length, Vect
 }
 
 int generateGrate(Interval *grates, int nGrates, Vector3 *points, int nPoints) {
-	double acc = 0.0, length = 0.0;
-	int iGrate, index;
+	double acc = 0.0, length = 0.0, sigma = 0.02;
+	int iGrate, index = 0;
 	for(iGrate=0;iGrate<nGrates;++iGrate) { length += intervalLength(&grates[iGrate]); }
 	int *n = new int [ nGrates ];
 	acc = 0.0;
@@ -284,20 +307,23 @@ int generateGrate(Interval *grates, int nGrates, Vector3 *points, int nPoints) {
 		n[iGrate] = n[iGrate] - n[iGrate-1];
 	}
 	for(iGrate=0;iGrate<nGrates;++iGrate) {
+        Interval *grate = &grates[iGrate];
 		for (int j = 0; j < n[iGrate]; ++j, ++index) {
 			double t = (double)(n[iGrate] - 1); /* -1 so range of j covers full range of interval */
-			t = (double) j / (double) (n[iGrate]- 1);
-			double x = x1 + t * (x2 - x1);
-			double y = y1 + t * (y2 - y1);
-			double z = z1 + t * (z2 - z1);
-			points[index].x = random.Gaus(x, sigma);
-			points[index].y = random.Gaus(y, sigma);
-			points[index].z = random.Gaus(z, sigma);
+			t = (double) j / t;
+			double x = grate->x1 + t * (grate->x2 - grate->x1);
+			double y = grate->y1 + t * (grate->y2 - grate->y1);
+			double z = grate->z1 + t * (grate->z2 - grate->z1);
+			points[index].x = rndm.Gaus(x, sigma);
+			points[index].y = rndm.Gaus(y, sigma);
+			points[index].z = rndm.Gaus(z, sigma);
 			if(index >= nPoints) { break; } /* shouldn't really happen */
 		}
 	}
 	return 0;
 }
+
+#if 0
 
 int generateGrate(double *m, double *b, double *delta, double *l, int nGrates,
 	Vector3 points, int nPoints) {
@@ -327,5 +353,6 @@ int generateGrate(double *m, double *b, double *delta, double *l, int nGrates,
     for(j=0;j<3;++j) {
         int index = 0;
     }
-
 }
+
+#endif
