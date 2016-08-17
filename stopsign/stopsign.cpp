@@ -19,7 +19,7 @@ double getPlane(Vector3 *points, int nPoints, double *theta);
 double solveLinearSystem(TMatrixD &matrix, double *b, double *x);
 // int generateGrate(double *m, double *b, double *delta, double *l, int nGrates, Vector3 points, int nPoints);
 int generateGrate(Interval *grates, int nGrates, Vector3 *points, int nPoints);
-void projectPointOntoPlane(Vector3 &n, Vector3 &p0, Vector3 &p);
+void projectPointOntoPlane(Vector3 &n, double d, Vector3 &p0, Vector3 &p);
 
 TRandom3 rndm;
 
@@ -79,23 +79,35 @@ int main(int argc, char **argv) {
     generateGrate(grateInterval, 3, points, nPoints);
 
 	double unitNormal[3];
-	double det = getPlane(points, nPoints, unitNormal);
-	printf("det = %f\n", det);
+	double d = getPlane(points, nPoints, unitNormal);
+	printf("(a=%.3f) * x + (b=%.3f) * y + (z=%.3f) * z + %f = 0\n", unitNormal[0], unitNormal[1], unitNormal[2], d);
 
     Vector3 *planePoints = new Vector3 [ nPoints ];
 
+    Vector3 n;
+    n.x = unitNormal[0];
+    n.y = unitNormal[1];
+    n.z = unitNormal[2];
     for(int iPoint=0;iPoint<nPoints;++iPoint) {
-        Vector3 p, n;
-        n.x = unitNormal[0];
-        n.y = unitNormal[1];
-        n.z = unitNormal[2];
-        projectPointOntoPlane(n, points[iPoint], planePoints[iPoint]);
+        projectPointOntoPlane(n, d, points[iPoint], planePoints[iPoint]);
     }
 
 }
 
 // TODO not tested
-void projectPointOntoPlane(Vector3 &n, Vector3 &p0, Vector3 &p) {
+/*
+ * plane is specified by nx * x + ny * y + nz * z + d = 0, where (nx, ny, nz) is a unit vector
+ */
+void projectPointOntoPlane(Vector3 &n, double d, Vector3 &p0, Vector3 &p) {
+
+    double nx = n.x, ny = n.y, nz = n.z;
+    double x0 = p0.x, y0 = p0.y, z0 = p0.z;
+    p.x = (ny * ny + nz * nz) * x0 - nz * nx * (z0 + d) - nx * ny * y0;
+    p.y = (nx * nx + nz * nz) * y0 - nz * ny * (z0 + d) - nx * ny * x0;
+    p.z = -1.0 * (d + p.x * nx / nz + p.y * ny / nz);
+
+    return;
+
 	TMatrixD matrix(3, 3);
 	matrix[0][0] = 0.0;
 	matrix[0][1] = -n.z;
@@ -177,23 +189,15 @@ double getPlane(Vector3 *points, int nPoints, double *unitNormal) {
 	n[1] = -sumY;
 	n[2] = -sumZ;
 
-	double det0 = solveLinearSystem(matrix, n, unitNormal);
+    double normal[3];
+	double det0 = solveLinearSystem(matrix, n, normal);
+    double d = sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
 
-    double a = sqrt(unitNormal[0] * unitNormal[0] + unitNormal[1] * unitNormal[1] + unitNormal[2] * unitNormal[2]);
-    unitNormal[0] = unitNormal[0] / a;
-    unitNormal[1] = unitNormal[1] / a;
-    unitNormal[2] = unitNormal[2] / a;
+    unitNormal[0] = normal[0] / d;
+    unitNormal[1] = normal[1] / d;
+    unitNormal[2] = normal[2] / d;
 
-//	double det0 = matrix.Determinant();
-//	for(int i=0;i<3;++i) {
-//		TMatrixD M(3, 3);
-//		for(int j=0;j<3;++j) { for(int k=0;k<3;++k) { M[j][k] = matrix[j][k]; } }
-//		for(int j=0;j<3;++j) { M[j][i] = n[j]; }
-//		double det = M.Determinant();
-//		theta[i] = det / det0;
-//	}
-
-	return det0;
+	return d;
 }
 
 int crossProduct(Vector3 *u, Vector3 *v, Vector3 *n, int normalize) {
