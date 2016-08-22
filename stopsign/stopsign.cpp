@@ -92,6 +92,26 @@ int main(int argc, char **argv) {
         projectPointOntoPlane(n, d, points[iPoint], planePoints[iPoint]);
     }
 
+    /*
+     * cluster in y
+     */
+    std::vector<double> yCluster;
+    double y = planePoints[0].y, maxClusterDistance = 8.0;
+    yCluster.push_back(y);
+    for(int iPoint=1;iPoint<nPoints;++iPoint) {
+        double newY = planePoints[iPoint].y;
+        std::vector<double>::const_iterator it, last = yCluster.end();
+        bool clusterFound = false;
+        for(it=yCluster.begin();it!=last;++it) {
+            double y = *it;
+            if(fabs(y - newY) < maxClusterDistance) { clusterFound = true; break; }
+        }
+        if(!clusterFound) { yCluster.push_back(newY); }
+    }
+
+    int nClusters = yCluster.size();
+    printf("%d clusters found", nClusters);
+
 }
 
 // TODO not tested
