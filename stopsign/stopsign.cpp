@@ -95,23 +95,89 @@ int main(int argc, char **argv) {
     /*
      * cluster in y
      */
-    std::vector<double> yCluster;
+    std::vector<double> yClusters;
     double y = planePoints[0].y, maxClusterDistance = 8.0;
-    yCluster.push_back(y);
+    yClusters.push_back(y);
     for(int iPoint=1;iPoint<nPoints;++iPoint) {
         double newY = planePoints[iPoint].y;
-        std::vector<double>::const_iterator it, last = yCluster.end();
+        std::vector<double>::const_iterator it, last = yClusters.end();
         bool clusterFound = false;
-        for(it=yCluster.begin();it!=last;++it) {
+        for(it=yClusters.begin();it!=last;++it) {
             double y = *it;
             if(fabs(y - newY) < maxClusterDistance) { clusterFound = true; break; }
         }
-        if(!clusterFound) { yCluster.push_back(newY); }
+        if(!clusterFound) { yClusters.push_back(newY); }
     }
 
-    int nClusters = yCluster.size();
+    int nClusters = yClusters.size();
     printf("%d clusters found", nClusters);
 
+	/*
+	 * for each cluster in y, fit a line
+	 */
+
+	Vector3 ***clusterPoints = new Vector3 ** [ nClusters ];
+	for(int i=0;i<nClusters;++i) {
+		clusterPoints[i] = new Vector3 * [ nPoints ]; // prepare for maximum size
+	}
+	int *clusterSize = new int [ nClusters ];
+	double *sumX = new double [ nClusters ];
+	double *sumY = new double [ nClusters ];
+	double *sumZ = new double [ nClusters ];
+	double *sumXX = new double [ nClusters ];
+	double *sumXY = new double [ nClusters ];
+	double *sumXZ = new double [ nClusters ];
+	double *sumYY = new double [ nClusters ];
+	double *sumYZ = new double [ nClusters ];
+	double *sumZZ = new double [ nClusters ];
+	for(int iCluster=0;iCluster<nClusters;++iCluster) { clusterSize[iCluster] = 0; }
+	for(int iCluster=0;iCluster<nClusters;++iCluster) {
+		for(int iPoint=0;iPoint<nPoints;++iPoint) {
+			Vector3 *point = &planePoints[iPoint];
+			double y = point->y;
+			double yCluster = yClusters[iCluster];
+			int size = 0;
+			double sX = 0.0, sY = 0.0, sZ = 0.0, sXX = 0.0, sXY = 0.0, sXZ = 0.0, sYY = 0.0, sYZ = 0.0, sZZ = 0.0;
+			if(fabs(y - yCluster) < maxClusterDistance) {
+				clusterPoints[iCluster][size] = point;
+				double x = point->x;
+				double y = point->y;
+				double z = point->z;
+				sX += x;
+				sY += y;
+				sXX += x * x;
+				sXY += x * y;
+				sXZ += x * z;
+				sYY += y * y;
+				sYZ += y * z;
+				sZZ += z * z;
+				++size;
+			}
+			clusterSize[iCluster] = size;
+			sumX[iCluster] = sX;
+			sumY[iCluster] = sY;
+			sumZ[iCluster] = sZ;
+			sumXX[iCluster] = sXX;
+			sumXY[iCluster] = sXY;
+			sumXZ[iCluster] = sXZ;
+			sumYY[iCluster] = sYY;
+			sumYZ[iCluster] = sYZ;
+			sumZZ[iCluster] = sZZ;
+		}
+	}
+
+	for(int i=0;i<nClusters;++i) { delete [] clusterPoints[i]; }
+	delete [] clusterPoints;
+	delete [] clusterSize;
+	delete [] sumX;
+	delete [] sumY;
+	delete [] sumZ;
+	delete [] sumXX;
+	delete [] sumXY;
+	delete [] sumXZ;
+	delete [] sumYY;
+	delete [] sumYZ;
+	delete [] sumZZ;
 }
 
 // TODO not tested
