@@ -103,15 +103,44 @@ int main(int argc, char **argv) {
 
 #endif
 
+typedef unsigned short int uint16;
+typedef unsigned char uint8;
+
+typedef struct {
+    uint8 distance[2];
+    uint8 reflectivity;
+} LidarChannelDatum;
+
+typedef struct {
+    uint16 flag;
+    uint16 azimuth;
+    LidarChannelDatum data[32];
+} LidarDataBlock;
+
+typedef struct {
+//    uint8 header[42];
+    LidarDataBlock dataBlock[12];
+    uint8 timestamp[4];
+    uint8 factoryField[2];
+} LidarPacket;
+
+void dumpLidarPacket(LidarPacket *packet) {
+    int i;
+    for(i=0;i<12;++i) {
+        printf("flag(%d) = 0x%x\n", i, packet->dataBlock[i].flag); 
+    }
+}
+
 int main() {
 
+    int i;
     int port = 2368;
     int sockfd_ = socket(PF_INET, SOCK_DGRAM, 0);
-    if (sockfd_ == -1)
-      {
-        perror("socket");
-        return;
-      }
+    if (sockfd_ == -1) { perror("socket"); return; }
+
+    printf("sizeof(uint16) = %ld. sizeof(uint8) = %ld\n", sizeof(uint16), sizeof(uint8));
+    printf("struct sizes = %ld %ld %ld\n", sizeof(LidarChannelDatum), sizeof(LidarDataBlock), sizeof(LidarPacket));
+    getchar();
   
     struct sockaddr_in my_addr;                     // my address information
     memset(&my_addr, 0, sizeof(my_addr));    // initialize to zeros
@@ -123,11 +152,27 @@ int main() {
   
     if (fcntl(sockfd_,F_SETFL, O_NONBLOCK|FASYNC) < 0) { perror("non-block"); return; }
 
-    while(getchar()) {
+    while(getchar) {
+        int retval, pollTimeout = 1000;
+        struct pollfd fds;
+        //do {
+          //  retval = poll(&fds, 1, pollTimeout);
+        //} while((fds.revents & POLLIN) == 0);
+
         struct sockaddr_in sender_address;
         int sender_address_len = sizeof(sender_address);
         int nbytes = recvfrom(sockfd_, buf, BUFSIZE, 0, (struct sockaddr *)&sender_address, &sender_address_len);
-        printf("nbytes = %d %d\n", nbytes, sender_address_len);
+        printf("nbytes = %d %ld\n", nbytes, sizeof(LidarPacket));
+
+        if(nbytes == sizeof(LidarPacket)) {
+            LidarPacket *packet = (LidarPacket *)buf;
+            dumpLidarPacket(packet);
+        }
+
+//        for(i=0;i<nbytes;++i) {
+//            printf("%c", buf[i]);
+//            if(i && ((i % 32) == 0)) printf("\n");
+//        }
     }
 
 
