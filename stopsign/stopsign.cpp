@@ -23,7 +23,7 @@ void projectPointOntoPlane(Vector3 &n, double d, Vector3 &p0, Vector3 &p);
 
 TRandom3 rndm;
 
-int main(int argc, char **argv) {
+int mainX(int argc, char **argv) {
 	printf("hello world\n");
 
 	double theta0[3];
