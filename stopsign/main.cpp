@@ -16,6 +16,8 @@
 #include <sys/file.h>
 #include <math.h>
 
+const double invTwoPi = 1.0 / (2.0 * M_PI);
+
 #define BUFSIZE 1300
 unsigned char buf [ BUFSIZE ];
 
@@ -44,8 +46,10 @@ typedef struct {
 
 typedef struct {
     double R, theta, phi; // R = distance, phi = azimuth, theta = altitude
-    int intensity;
+    int intensity, channel;
 } LidarData;
+
+void analyzePointCloud(LidarData *data, int nPoints);
 
 #define NPOINTS (3600 * 16)
 //typedef struct {
@@ -124,6 +128,7 @@ int convertLidarPacketToLidarData(LidarPacket *lidarPacket, LidarData *lidarData
             lidarData->phi = azimuth0 + iChannel * cycleTimeBetweenFirings;
             lidarData->theta = laserPolarAngle[iChannel];
             lidarData->intensity = datum->reflectivity;
+            lidarData->channel = iChannel;
             ++lidarData;
             ++nPoints;
         }
@@ -135,6 +140,7 @@ int convertLidarPacketToLidarData(LidarPacket *lidarPacket, LidarData *lidarData
             lidarData->phi = azimuth0 + iChannel * cycleTimeBetweenFirings;
             lidarData->theta = laserPolarAngle[iChannel];
             lidarData->intensity = datum->reflectivity;
+            lidarData->channel = iChannel;
             ++lidarData;
             ++nPoints;
         }
@@ -184,7 +190,7 @@ int main() {
     if (fcntl(sockfd, F_SETFL, O_NONBLOCK | FASYNC) < 0) { perror("non-block"); return -1; }
 
     time_t t0 = time(0);
-    int nCycles = 0;
+    int nCycles = 0, nPackets = 0, packet0Index = 0;
     while (getchar) { // TODO make infinite loop
         int retval, pollTimeout = 1000;
         struct pollfd fds;
@@ -219,8 +225,10 @@ int main() {
         if (nbytes == sizeof(LidarPacket)) {
             LidarPacket *packet = &lidarPackets[lidarPacketBufferHead];
             lidarPacketBufferHead = (lidarPacketBufferHead + 1) % lidarPacketBufferSize;
-            if(isBeginningPacket(packet)) {
+            if(isBeginningPacket(packet) && (nPackets >= (packet0Index + 10))) {
+                packet0Index = nPackets;
                 printf("found beginning packet. previous index = %d\n", pointCloudIndex);
+                analyzePointCloud(pointCloud, pointCloudIndex);
                 pointCloudIndex = 0;
 //                dumpLidarPacket(packet);
                 ++nCycles;
@@ -229,9 +237,43 @@ int main() {
                     printf("frequency = %d/%d = %d\n", nCycles, deltaTime, nCycles / deltaTime);
                 }
             }
+            ++nPackets;
             int n = convertLidarPacketToLidarData(packet, &pointCloud[pointCloudIndex]);
             pointCloudIndex += n;
         }
 
+    }
+}
+
+void clearHistogram(int *histogram, int nX) {
+    memset(histogram, 0, sizeof(int) * nX);
+}
+
+void fillHistogram(int *histogram, int x) {
+    ++histogram[x];
+}
+
+void fillHistogram(int *histogram, int nX, int x, int y) {
+    ++histogram[y * nX + x];
+}
+
+int histogramIntensity[nChannels][256];
+int histogramAzimuth[nChannels][256];
+int histogramIntensityAzimuth[nChannels][256 * 256];
+void analyzePointCloud(LidarData *data, int nPoints) {
+    int iChannel, iPoint;
+    LidarData *datum = data;
+    for(iChannel=0;iChannel<nChannels;++iChannel) {
+        clearHistogram(histogramAzimuth[iChannel], 256);
+        clearHistogram(histogramIntensity[iChannel], 256);
+        clearHistogram(histogramIntensityAzimuth[iChannel], 256 * 256);
+    }
+    for(iPoint=0;iPoint<nPoints;++iPoint,++datum) {
+        int intensity = datum->intensity & 0xff;
+        int azimuth = ((int)(datum->phi * invTwoPi * 255.0)) & 0xff;
+        int channel = datum->channel;
+        fillHistogram(histogramIntensity[channel], intensity);
+        fillHistogram(histogramAzimuth[channel], azimuth);
+        fillHistogram(histogramIntensityAzimuth[channel], 256, azimuth, intensity);
     }
 }
