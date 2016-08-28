@@ -243,6 +243,35 @@ double solveLinearSystem(TMatrixD &matrix, double *b, double *x) {
 	return det0;
 }
 
+double getLine(Vector3 *points, int nPoints, double *lineParameters, double endpoints[2]) {
+	double sumXX = 0.0, sumXY = 0.0, sumXZ = 0.0, sumYY = 0.0, sumZZ = 0.0;
+	double sumX = 0.0, sumY = 0.0, sumZ = 0.0, xMin = points[0].x, xMax = points[0].x;
+	for (int i = 0; i < nPoints; ++i) {
+		double x = points[i].x;
+		double y = points[i].y;
+		double z = points[i].z;
+		sumX += x;
+		sumY += y;
+		sumZ += z;
+		sumXX += x * x;
+		sumXY += x * y;
+		sumXZ += x * z;
+		sumYY += y * y;
+		sumZZ += z * z;
+		if(x < xMin) xMin = x;
+		if(x > xMax) xMax = x;
+	}
+	double a = sumX * sumX - sumXX;
+	double aInv = 1.0 / a;
+	lineParameters[0] = (sumX * sumY - sumXY) * aInv;
+	lineParameters[1] = (sumX * sumXY - sumY * sumXX) * aInv;
+	lineParameters[2] = (sumX * sumZ - sumXZ) * aInv;
+	lineParameters[3] = (sumX * sumXZ - sumZ * sumXX) * aInv;
+	endpoints[0] = xMin;
+	endpoints[1] = xMax;
+	return a / nPoints;
+}
+
 double getPlane(Vector3 *points, int nPoints, double *unitNormal) {
 	double sumXX = 0.0, sumXY = 0.0, sumXZ = 0.0, sumYY = 0.0, sumYZ = 0.0, sumZZ = 0.0;
 	double sumX = 0.0, sumY = 0.0, sumZ = 0.0;
