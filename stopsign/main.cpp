@@ -20,6 +20,7 @@
 #include "geometry.h"
 #include "lidar.h"
 #include "common.h"
+#include "dataAcquisition.h"
 
 static int run = 1;
 
@@ -31,15 +32,50 @@ static void stop(int sig) {
 
 void test();
 
-void *lidar_loop(void *p);
+const int nLidarPackets = 1024;
+//LidarPacket lidarPackets[NLIDARPACKETS];
+//int lidarPacketBufferHead = 0;
+//int lidarPacketBufferSize = NLIDARPACKETS;
+//void *lidarLloop(void *p);
 
 enum {
     LidarThreadId = 0,
+    DataAcquisitionThreadId = 1,
     NThreads
 };
 pthread_t tid[NThreads];
 
-int main() {
+int waitForThreadToStart(ThreadParams *threadParams) {
+    while(run && threadParams->threadStarted == 0) {
+        printf("waiting for %s service to start\n", threadParams->threadName);
+        if(threadParams->errorCode != 0) {
+            printf("error code %d encountered starting %s service", threadParams->errorCode, threadParams->threadName);
+            break;
+        }
+    }
+
+    if(threadParams->errorCode == 0) {
+        printf("%s service started\n", threadParams->threadName);
+    }
+
+    return threadParams->errorCode;
+}
+
+int waitForThreadToStop(ThreadParams *threadParams) {
+    char *threadResult;
+    pthread_join(threadParams->tid, (void **)&threadResult);
+}
+
+int main(int argc, char **argv) {
+
+    int i, err;
+    std::string ofile = "dataAcquisition.jsv";
+
+    for(i=1;i<argc;++i) {
+        if(strcmp(argv[i], "-o") == 0) {
+            ofile = argv[++i];
+        }
+    }
 
     /* important preliminaries */
     if ((sizeof(uint8) != 1) ||
@@ -57,30 +93,47 @@ int main() {
     signal(SIGINT, stop); /* exception handling */
     signal(SIGTERM, stop); /* exception handling */
 
+    ThreadParams *threadParams;
+
+    /* get the lidar thread up and running */
     LidarServerParams lidarServerParams;
     memset(&lidarServerParams, 0, sizeof(lidarServerParams));
-    lidarServerParams.threadStarted = 0;
-    lidarServerParams.run = 1;
-    int err = pthread_create(&tid[LidarThreadId], NULL, lidar_loop, &lidarServerParams);
+    threadParams = &lidarServerParams.threadParams;
+    threadParams->threadStarted = 0;
+    threadParams->run = 1;
+    threadParams->errorCode = 0;
+    threadParams->threadName = "lidar";
+    lidarServerParams.packetBufferSize = nLidarPackets;
+    lidarServerParams.packetBuffer = new LidarPacket[nLidarPackets];
+    lidarServerParams.packetBufferHead = 0;
+    err = pthread_create(&tid[LidarThreadId], NULL, lidarLoop, &lidarServerParams);
+    threadParams->tid = tid[LidarThreadId];
 
-    while(run && lidarServerParams.threadStarted == 0) {
-        printf("waiting for lidar service to start\n");
-        if(lidarServerParams.errorCode != 0) {
-            printf("error code %d encountered starting lidar service", lidarServerParams.errorCode);
-            break;
-        }
-    }
-    if(lidarServerParams.errorCode == 0) {
-        printf("lidar service started\n");
-    }
+    if(waitForThreadToStart(threadParams) != 0) { printf("problems in paradise"); exit(1); }
+
+    /* data acquisition loop up and running */
+    DataAcquisitionParams dataAcquisitionParams;
+    memset(&dataAcquisitionParams, 0, sizeof(dataAcquisitionParams));
+    threadParams = &dataAcquisitionParams.threadParams;
+    threadParams->threadStarted = 0;
+    threadParams->run = 1;
+    threadParams->errorCode = 0;
+    threadParams->threadName = "data acquisition";
+    dataAcquisitionParams.lidarPacketBuffer = lidarServerParams.packetBuffer;
+    dataAcquisitionParams.lidarPacketTail = 0;
+    dataAcquisitionParams.lidarPacketSize = nLidarPackets;
+    err = pthread_create(&tid[DataAcquisitionThreadId], NULL, dataAcquisitionLoop, &dataAcquisitionParams);
+    threadParams->tid = tid[DataAcquisitionThreadId];
+
+    if(waitForThreadToStart(threadParams) != 0) { printf("problems in paradise"); exit(1); }
 
     while(run) {
         sleep(1);
         printf("running...\n");
     }
 
-    char *thread_result;
-    pthread_join(tid[LidarThreadId], (void**) &thread_result);
+    waitForThreadToStop(&lidarServerParams.threadParams);
+    waitForThreadToStop(&dataAcquisitionParams.threadParams);
     printf("goodbye\n");
 
 }

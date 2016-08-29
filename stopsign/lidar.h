@@ -42,9 +42,13 @@ const int lidarBlockSize = 100;
 const int lidarDatumSize = 3;
 
 typedef struct {
-    int threadStarted;
-    int run;
-    int errorCode;
+    ThreadParams threadParams;
+    LidarPacket *packetBuffer;
+    int packetBufferHead;
+    int packetBufferSize;
+    // int *packetTail;
 } LidarServerParams;
+
+void *lidarLoop(void *ptr);
 
 #endif

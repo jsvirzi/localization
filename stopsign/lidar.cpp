@@ -18,8 +18,8 @@
 #include "lidar.h"
 #include "common.h"
 
-#define BUFSIZE 1300
-unsigned char buf [ BUFSIZE ];
+//#define BUFSIZE 1300
+//unsigned char buf [ BUFSIZE ];
 
 static int *run = 0;
 static void stop(int sig) {
@@ -61,11 +61,6 @@ void analyzePointCloud(LidarData *data, int nPoints);
 #define NPOINTS (3600 * 16)
 LidarData pointCloud[NPOINTS];
 int pointCloudIndex;
-
-#define NLIDARPACKETS 1024
-LidarPacket lidarPackets[NLIDARPACKETS];
-int lidarPacketBufferHead = 0;
-int lidarPacketBufferSize = NLIDARPACKETS;
 
 int convertLidarPacketToLidarData(LidarPacket *lidarPacket, LidarData *lidarData) {
     int iBlock, iChannel, nPoints = 0;
@@ -139,19 +134,20 @@ double getAzimuth(LidarDataBlock *block) {
 }
 
 /* this will run on its own thread */
-void *lidar_loop(void *ptr) {
+void *lidarLoop(void *ptr) {
 
     LidarServerParams *lidarServerParams = (LidarServerParams *)ptr;
-    run = &lidarServerParams->run;
+    ThreadParams *threadParams = &lidarServerParams->threadParams;
+    run = &threadParams->run;
 
 /* exception handling */
     signal(SIGINT, stop);
-    signal(SIGTERM, stop); /* exception handling */
+    signal(SIGTERM, stop);
 
     int i;
     int port = 2368;
     int sockfd = socket(PF_INET, SOCK_DGRAM, 0);
-    if (sockfd == -1) { perror("socket"); lidarServerParams->errorCode = -1; return 0; }
+    if (sockfd == -1) { perror("socket"); threadParams->errorCode = -1; return 0; }
 
     struct sockaddr_in my_addr;                     // my address information
     memset(&my_addr, 0, sizeof(my_addr));    // initialize to zeros
@@ -161,20 +157,20 @@ void *lidar_loop(void *ptr) {
 
     if (bind(sockfd, (struct sockaddr *) &my_addr, sizeof(struct sockaddr)) == -1) { perror("bind"); }
 
-    if (fcntl(sockfd, F_SETFL, O_NONBLOCK | FASYNC) < 0) { perror("non-block"); lidarServerParams->errorCode = -2; return 0; }
+    if (fcntl(sockfd, F_SETFL, O_NONBLOCK | FASYNC) < 0) { perror("non-block"); threadParams->errorCode = -2; return 0; }
 
     time_t t0 = time(0);
     int nCycles = 0, nPackets = 0, packet0Index = 0;
 
-    lidarServerParams->threadStarted = 1;
+    threadParams->threadStarted = 1;
 
-    while (lidarServerParams->run == 1) {
+    while (threadParams->run == 1) {
 
-        int retval, pollTimeout = 1000;
-        struct pollfd fds;
-        memset(&fds, 0, sizeof(fds));
-        fds.fd = sockfd;
-        fds.events = POLLIN;
+//        int retval, pollTimeout = 1000;
+//        struct pollfd fds;
+//        memset(&fds, 0, sizeof(fds));
+//        fds.fd = sockfd;
+//        fds.events = POLLIN;
 //        do {
 //            retval = poll(&fds, 1, pollTimeout);
 //            if (retval == 0) {
@@ -190,7 +186,7 @@ void *lidar_loop(void *ptr) {
 
         struct sockaddr_in sender_address;
         socklen_t sender_address_len = sizeof(sender_address);
-        int nbytes = recvfrom(sockfd, &lidarPackets[lidarPacketBufferHead], sizeof(LidarPacket), 0, (struct sockaddr *) &sender_address, &sender_address_len);
+        int nbytes = recvfrom(sockfd, &lidarServerParams->packetBuffer[lidarServerParams->packetBufferHead], sizeof(LidarPacket), 0, (struct sockaddr *) &sender_address, &sender_address_len);
 
         // printf("nbytes = %d %ld\n", (int)nbytes, sizeof(LidarPacket));
 
@@ -201,8 +197,8 @@ void *lidar_loop(void *ptr) {
         }
 
         if (nbytes == sizeof(LidarPacket)) {
-            LidarPacket *packet = &lidarPackets[lidarPacketBufferHead];
-            lidarPacketBufferHead = (lidarPacketBufferHead + 1) % lidarPacketBufferSize;
+            LidarPacket *packet = &lidarServerParams->packetBuffer[lidarServerParams->packetBufferHead];
+            lidarServerParams->packetBufferHead = (lidarServerParams->packetBufferHead + 1) % lidarServerParams->packetBufferSize;
             if(isBeginningPacket(packet) && (nPackets >= (packet0Index + 10))) {
                 packet0Index = nPackets;
                 printf("found beginning packet. previous index = %d\n", pointCloudIndex);
@@ -220,9 +216,13 @@ void *lidar_loop(void *ptr) {
             pointCloudIndex += n;
         }
 
+        if(threadParams->loopWait != 0) {
+            usleep(threadParams->loopWait);
+        }
+
     }
 
-    lidarServerParams->threadStarted = 0;
+    threadParams->threadStarted = 0;
 
     return 0;
 }
