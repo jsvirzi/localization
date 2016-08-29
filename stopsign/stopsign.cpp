@@ -5,23 +5,51 @@
 #include <TApplication.h>
 #include <TRandom3.h>
 
+#include "geometry.h"
+
 double root2 = 1.414;
 
-typedef struct {
-	double x, y, z;
-} Vector3;
-
-typedef struct {
-	double x1, y1, z1, x2, y2, z2;
-} Interval;
-
-double getPlane(Vector3 *points, int nPoints, double *theta);
-double solveLinearSystem(TMatrixD &matrix, double *b, double *x);
 // int generateGrate(double *m, double *b, double *delta, double *l, int nGrates, Vector3 points, int nPoints);
 int generateGrate(Interval *grates, int nGrates, Vector3 *points, int nPoints);
-void projectPointOntoPlane(Vector3 &n, double d, Vector3 &p0, Vector3 &p);
+void generateLine(Vector3 *points, int nPoints, int primaryAxis, double lineParameters[4], double endPoints[2], double sigma);
 
 TRandom3 rndm;
+
+void test() {
+	/* y is primary axis.
+	 * x = m1 * y + b1
+	 * z = m2 * y + b2
+	 * put the stop sign center at x0 = 5m, y0 = -3m, z0 = 2m
+	 * the stop sign is slightly "yawed" by 4 degrees = 0.07 radians
+	 * the stop sign is slightly tipped (pitched) by 3 degrees = 0.05 radians
+	 * m1 = tan(0.07) = 0.07
+	 * b1 = 5.0 - m1 * y0
+	 * m2 = tan(0.05) = 0.05
+	 * b2 = 2.0 - m2 * y0
+	 */
+	double x0 = 5.0, y0 = -3.0, z0 = 2.0;
+	double m1 = 0.07;
+	double b1 = x0 - m1 * y0;
+	double m2 = 0.05;
+	double b2 = z0 - m2 * y0;
+	double inputLineParameters[4] = { m1, b1, m2, b2 };
+	int nPoints = 100;
+	Vector3 *points = new Vector3[nPoints];
+	int iAxis;
+	for(iAxis=X_AXIS;iAxis<=Z_AXIS;++iAxis) {
+		double endPoints[2] = {-3.5, -2.5};
+		double sigma = 0.0002;
+		generateLine(points, nPoints, iAxis, inputLineParameters, endPoints, sigma);
+		double lineParameters[4] = {0.0, 0.0, 0.0, 0.0};
+		getLine(points, nPoints, iAxis, lineParameters, endPoints);
+		printf("input line parameters = (%f, %f, %f, %f\n",
+			   inputLineParameters[0], inputLineParameters[1], inputLineParameters[2], inputLineParameters[3]);
+		printf("final line parameters = (%f, %f, %f, %f\n",
+			   lineParameters[0], lineParameters[1], lineParameters[2], lineParameters[3]);
+	}
+	delete [] points;
+	return;
+}
 
 int mainX(int argc, char **argv) {
 	printf("hello world\n");
@@ -243,9 +271,55 @@ double solveLinearSystem(TMatrixD &matrix, double *b, double *x) {
 	return det0;
 }
 
-double getLine(Vector3 *points, int nPoints, double *lineParameters, double endpoints[2]) {
-	double sumXX = 0.0, sumXY = 0.0, sumXZ = 0.0, sumYY = 0.0, sumZZ = 0.0;
-	double sumX = 0.0, sumY = 0.0, sumZ = 0.0, xMin = points[0].x, xMax = points[0].x;
+void generateLine(Vector3 *points, int nPoints, int primaryAxis, double lineParameters[4], double endPoints[2], double sigma) {
+	int iPoint;
+	double tBegin = endPoints[0], tFinal = endPoints[1];
+	double deltaT = (tFinal - tBegin) / (nPoints - 1);
+	double x, y, z;
+	double m1 = lineParameters[0], b1 = lineParameters[1], m2 = lineParameters[2], b2 = lineParameters[3];
+	Vector3 *point = points;
+	for(iPoint=0;iPoint<nPoints;++iPoint,++point) {
+		switch(primaryAxis) {
+			case 1:
+				x = tBegin + iPoint * deltaT;
+				y = m1 * x + b1;
+				z = m2 * x + b2;
+				break;
+			case 2:
+				y = tBegin + iPoint * deltaT;
+				x = m1 * y + b1;
+				z = m2 * y + b2;
+				break;
+			case 3:
+				z = tBegin + iPoint * deltaT;
+				x = m1 * z + b1;
+				y = m2 * z + b2;
+				break;
+		}
+		point->x = rndm.Gaus(x, sigma);
+		point->y = rndm.Gaus(y, sigma);
+		point->z = rndm.Gaus(z, sigma);
+		// printf("point(%d) = (%f, %f, %f)\n", iPoint, point->x, point->y, point->z);
+	}
+}
+
+double getLine(Vector3 *points, int nPoints, int primaryAxis, double *lineParameters, double endpoints[2]) {
+	double sumXX = 0.0, sumXY = 0.0, sumXZ = 0.0, sumYY = 0.0, sumYZ = 0.0, sumZZ = 0.0;
+	double sumX = 0.0, sumY = 0.0, sumZ = 0.0, minOrdinate, maxOrdinate;
+	switch(primaryAxis) {
+		case X_AXIS:
+			minOrdinate = points[0].x;
+			maxOrdinate = points[0].x;
+			break;
+		case Y_AXIS:
+			minOrdinate = points[0].y;
+			maxOrdinate = points[0].y;
+			break;
+		case Z_AXIS:
+			minOrdinate = points[0].z;
+			maxOrdinate = points[0].z;
+			break;
+	}
 	for (int i = 0; i < nPoints; ++i) {
 		double x = points[i].x;
 		double y = points[i].y;
@@ -257,18 +331,53 @@ double getLine(Vector3 *points, int nPoints, double *lineParameters, double endp
 		sumXY += x * y;
 		sumXZ += x * z;
 		sumYY += y * y;
+		sumYZ += y * z;
 		sumZZ += z * z;
-		if(x < xMin) xMin = x;
-		if(x > xMax) xMax = x;
+		switch (primaryAxis) {
+			case 1:
+				if (x < minOrdinate) minOrdinate = x;
+				if (x > maxOrdinate) maxOrdinate = x;
+				break;
+			case 2:
+				if (y < minOrdinate) minOrdinate = y;
+				if (y > maxOrdinate) maxOrdinate = y;
+				break;
+			case 3:
+				if (z < minOrdinate) minOrdinate = z;
+				if (z > maxOrdinate) maxOrdinate = z;
+				break;
+		}
 	}
-	double a = sumX * sumX - sumXX;
-	double aInv = 1.0 / a;
-	lineParameters[0] = (sumX * sumY - sumXY) * aInv;
-	lineParameters[1] = (sumX * sumXY - sumY * sumXX) * aInv;
-	lineParameters[2] = (sumX * sumZ - sumXZ) * aInv;
-	lineParameters[3] = (sumX * sumXZ - sumZ * sumXX) * aInv;
-	endpoints[0] = xMin;
-	endpoints[1] = xMax;
+	double sum1 = nPoints;
+	double a, aInv;
+	switch (primaryAxis) {
+		case 1:
+			a = sumX * sumX - sumXX * sum1;
+			aInv = 1.0 / a;
+			lineParameters[0] = (sumX * sumY - sumXY * sum1) * aInv;
+			lineParameters[1] = (sumX * sumXY - sumY * sumXX) * aInv;
+			lineParameters[2] = (sumX * sumZ - sumXZ * sum1) * aInv;
+			lineParameters[3] = (sumX * sumXZ - sumZ * sumXX) * aInv;
+			break;
+		case 2:
+			a = sumY * sumY - sumYY * sum1;
+			aInv = 1.0 / a;
+			lineParameters[0] = (sumX * sumY - sumXY * sum1) * aInv;
+			lineParameters[1] = (sumY * sumXY - sumX * sumYY) * aInv;
+			lineParameters[2] = (sumY * sumZ - sumYZ * sum1) * aInv;
+			lineParameters[3] = (sumY * sumYZ - sumZ * sumYY) * aInv;
+			break;
+		case 3:
+			a = sumZ * sumZ - sumZZ * sum1;
+			aInv = 1.0 / a;
+			lineParameters[0] = (sumX * sumZ - sumXZ * sum1) * aInv;
+			lineParameters[1] = (sumZ * sumXZ - sumX * sumZZ) * aInv;
+			lineParameters[2] = (sumY * sumZ - sumYZ * sum1) * aInv;
+			lineParameters[3] = (sumZ * sumYZ - sumY * sumZZ) * aInv;
+			break;
+	}
+	endpoints[0] = minOrdinate;
+	endpoints[1] = maxOrdinate;
 	return a / nPoints;
 }
 

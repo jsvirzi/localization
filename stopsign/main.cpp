@@ -16,6 +16,10 @@
 #include <sys/file.h>
 #include <math.h>
 
+#include "geometry.h"
+
+void test();
+
 const double invTwoPi = 1.0 / (2.0 * M_PI);
 
 #define BUFSIZE 1300
@@ -175,6 +179,8 @@ int main() {
     int sockfd = socket(PF_INET, SOCK_DGRAM, 0);
     if (sockfd == -1) { perror("socket"); return -1; }
 
+    test();
+
     printf("sizeof(uint16) = %ld. sizeof(uint8) = %ld\n", sizeof(uint16), sizeof(uint8));
     printf("struct sizes = %ld %ld %ld\n", sizeof(LidarChannelDatum), sizeof(LidarDataBlock), sizeof(LidarPacket));
     getchar();
@@ -234,7 +240,7 @@ int main() {
                 ++nCycles;
                 time_t deltaTime = time(0) - t0;
                 if (deltaTime > 0) {
-                    printf("frequency = %d/%d = %d\n", nCycles, deltaTime, nCycles / deltaTime);
+                    printf("frequency = %d/%ld = %ld\n", nCycles, deltaTime, nCycles / deltaTime);
                 }
             }
             ++nPackets;
