@@ -15,271 +15,73 @@
 #include <fcntl.h>
 #include <sys/file.h>
 #include <math.h>
+#include <csignal>
 
 #include "geometry.h"
+#include "lidar.h"
+#include "common.h"
+
+static int run = 1;
+
+static void stop(int sig) {
+    run = 0;
+    printf("SIGINT received. shutting down application\n");
+    // syslog(LOG_NOTICE, "imu: sig %d received", sig);
+}
 
 void test();
 
-const double invTwoPi = 1.0 / (2.0 * M_PI);
-
-#define BUFSIZE 1300
-unsigned char buf [ BUFSIZE ];
-
-typedef unsigned short int uint16;
-typedef unsigned char uint8;
-
-#define NBLOCKS 12
-
-typedef struct {
-    uint8 distance[2];
-    uint8 reflectivity;
-} LidarChannelDatum;
-
-typedef struct {
-    uint16 flag;
-    uint8 azimuthLo, azimuthHi; // these need rearrangement
-    LidarChannelDatum data[32];
-} LidarDataBlock;
-
-typedef struct {
-//    uint8 header[42];
-    LidarDataBlock dataBlock[NBLOCKS];
-    uint8 timestamp[4];
-    uint8 factoryField[2];
-} LidarPacket;
-
-typedef struct {
-    double R, theta, phi; // R = distance, phi = azimuth, theta = altitude
-    int intensity, channel;
-} LidarData;
-
-void analyzePointCloud(LidarData *data, int nPoints);
-
-#define NPOINTS (3600 * 16)
-//typedef struct {
-//    LidarData lidarData[NPOINTS];
-//} PointCloud;
-//PointCloud pointCloud;
-LidarData pointCloud[NPOINTS];
-int pointCloudIndex;
-
-#define NLIDARPACKETS 1024
-LidarPacket lidarPackets[NLIDARPACKETS];
-int lidarPacketBufferHead = 0;
-int lidarPacketBufferSize = NLIDARPACKETS;
-
-const double cycleTimeBetweenFirings = 2.304; // microseconds
-const double rechargePeriod = 18.43; // microseconds
-const int distanceUnit = 2.0; // millimeters
+void *lidar_loop(void *p);
 
 enum {
-    StrongestReturn = 0x37,
-    LastReturn = 0x38,
-    DualReturn = 0x39
-} ReturnModes;
-
-const int VLP16Device = 0x22;
-
-const int nChannels = 16;
-
-double laserPolarAngle[nChannels] = {
-    -15.0 * M_PI / 180.0,
-      1.0 * M_PI / 180.0,
-    -13.0 * M_PI / 180.0,
-      3.0 * M_PI / 180.0,
-    -11.0 * M_PI / 180.0,
-      5.0 * M_PI / 180.0,
-     -9.0 * M_PI / 180.0,
-      7.0 * M_PI / 180.0,
-     -7.0 * M_PI / 180.0,
-      9.0 * M_PI / 180.0,
-     -5.0 * M_PI / 180.0,
-     11.0 * M_PI / 180.0,
-     -3.0 * M_PI / 180.0,
-     13.0 * M_PI / 180.0,
-     -1.0 * M_PI / 180.0,
-     15.0 * M_PI / 180.0
+    LidarThreadId = 0,
+    NThreads
 };
-
-double getAzimuth(LidarDataBlock *block) {
-    unsigned char azimuthLo = block->azimuthLo;
-    unsigned char azimuthHi = block->azimuthHi;
-    int azimuthData = azimuthHi;
-    azimuthData = (azimuthData << 8) | azimuthLo;
-    double azimuth = azimuthData * M_PI / 18000.0;
-    return azimuth;
-}
-
-int convertLidarPacketToLidarData(LidarPacket *lidarPacket, LidarData *lidarData) {
-    int iBlock, iChannel, nPoints = 0;
-    double azimuth[NBLOCKS];
-    double interpolatedDeltaAzimuth = 0.0;
-    for(iBlock=1;iBlock<NBLOCKS;++iBlock) {
-        LidarDataBlock *lidarDataBlock = &lidarPacket->dataBlock[iBlock];
-        azimuth[iBlock] = getAzimuth(lidarDataBlock);
-        double a = azimuth[iBlock] - azimuth[iBlock-1];
-        interpolatedDeltaAzimuth += (a * a);
-    }
-    interpolatedDeltaAzimuth = 0.5 * sqrt(interpolatedDeltaAzimuth) / (NBLOCKS - 1);
-
-    for(iBlock=0;iBlock<NBLOCKS;++iBlock) {
-        LidarDataBlock *lidarDataBlock = &lidarPacket->dataBlock[iBlock];
-        double azimuth0 = azimuth[iBlock];
-        for(iChannel=0;iChannel<nChannels;++iChannel) {
-            LidarChannelDatum *datum = &lidarDataBlock->data[iChannel];
-            double a = distanceUnit * datum->distance[0];
-            lidarData->R = 256.0 * a + distanceUnit * datum->distance[1];
-            lidarData->phi = azimuth0 + iChannel * cycleTimeBetweenFirings;
-            lidarData->theta = laserPolarAngle[iChannel];
-            lidarData->intensity = datum->reflectivity;
-            lidarData->channel = iChannel;
-            ++lidarData;
-            ++nPoints;
-        }
-        azimuth0 += interpolatedDeltaAzimuth;
-        for(iChannel=0;iChannel<nChannels;++iChannel) {
-            LidarChannelDatum *datum = &lidarDataBlock->data[nChannels + iChannel];
-            double a = distanceUnit * datum->distance[0];
-            lidarData->R = 256.0 * a + distanceUnit * datum->distance[1];
-            lidarData->phi = azimuth0 + iChannel * cycleTimeBetweenFirings;
-            lidarData->theta = laserPolarAngle[iChannel];
-            lidarData->intensity = datum->reflectivity;
-            lidarData->channel = iChannel;
-            ++lidarData;
-            ++nPoints;
-        }
-    }
-    return nPoints;
-}
-
-int isBeginningPacket(LidarPacket *packet) {
-    LidarDataBlock *lidarDataBlock = &packet->dataBlock[0];
-    double azimuth = getAzimuth(lidarDataBlock);
-//    printf("isBeginningPacket(LidarPacket packet=%p): azimuth = %.5f\n", packet, azimuth);
-    double c = cos(azimuth), s = sin(azimuth);
-    if ((fabs(c - 1.0) < 0.1) && (fabs(s - 0.0) < 0.1)) return 1;
-    else return 0;
-}
-
-void dumpLidarPacket(LidarPacket *packet) {
-    int iBlock;
-    for(iBlock=0;iBlock<NBLOCKS;++iBlock) {
-        LidarDataBlock *lidarDataBlock = &packet->dataBlock[iBlock];
-        double azimuth = getAzimuth(lidarDataBlock);
-        printf("flag(%d) = 0x%x. azimuth = %.3f(rad) = %.3f(deg)\n", iBlock, packet->dataBlock[iBlock].flag, azimuth, azimuth * 180.0 / M_PI);
-//        double azimuth = lidarDataBlock->azimuth
-//        printf("")
-    }
-}
+pthread_t tid[NThreads];
 
 int main() {
 
-    int i;
-    int port = 2368;
-    int sockfd = socket(PF_INET, SOCK_DGRAM, 0);
-    if (sockfd == -1) { perror("socket"); return -1; }
+    /* important preliminaries */
+    if ((sizeof(uint8) != 1) ||
+        (sizeof(uint16) != 2) ||
+        (sizeof(LidarPacket) != lidarPacketSize) ||
+        (sizeof(LidarDataBlock) != lidarBlockSize) ||
+        (sizeof(LidarChannelDatum) != lidarDatumSize)) {
+        printf("sizeof(uint16) = %ld. sizeof(uint8) = %ld\n", sizeof(uint16), sizeof(uint8));
+        printf("struct sizes = %ld %ld %ld\n", sizeof(LidarChannelDatum), sizeof(LidarDataBlock), sizeof(LidarPacket));
+        return -1;
+    }
 
-    test();
+    // test();
 
-    printf("sizeof(uint16) = %ld. sizeof(uint8) = %ld\n", sizeof(uint16), sizeof(uint8));
-    printf("struct sizes = %ld %ld %ld\n", sizeof(LidarChannelDatum), sizeof(LidarDataBlock), sizeof(LidarPacket));
-    getchar();
+    signal(SIGINT, stop); /* exception handling */
+    signal(SIGTERM, stop); /* exception handling */
 
-    struct sockaddr_in my_addr;                     // my address information
-    memset(&my_addr, 0, sizeof(my_addr));    // initialize to zeros
-    my_addr.sin_family = AF_INET;            // host byte order
-    my_addr.sin_port = htons(port);          // port in network byte order
-    my_addr.sin_addr.s_addr = INADDR_ANY;    // automatically fill in my IP
+    LidarServerParams lidarServerParams;
+    memset(&lidarServerParams, 0, sizeof(lidarServerParams));
+    lidarServerParams.threadStarted = 0;
+    lidarServerParams.run = 1;
+    int err = pthread_create(&tid[LidarThreadId], NULL, lidar_loop, &lidarServerParams);
 
-    if (bind(sockfd, (struct sockaddr *) &my_addr, sizeof(struct sockaddr)) == -1) { perror("bind"); }
-
-    if (fcntl(sockfd, F_SETFL, O_NONBLOCK | FASYNC) < 0) { perror("non-block"); return -1; }
-
-    time_t t0 = time(0);
-    int nCycles = 0, nPackets = 0, packet0Index = 0;
-    while (getchar) { // TODO make infinite loop
-        int retval, pollTimeout = 1000;
-        struct pollfd fds;
-        memset(&fds, 0, sizeof(fds));
-        fds.fd = sockfd;
-        fds.events = POLLIN;
-//        do {
-//            retval = poll(&fds, 1, pollTimeout);
-//            if (retval == 0) {
-//                printf("Velodyne timed out\n");
-//            }
-//            int errorCondition = (fds.revents & POLLERR) || (fds.revents & POLLHUP) || (fds.revents & POLLNVAL);
-//
-//           if (errorCondition) {
-//                printf("error condition exists in UDP packets from Velodyne Lidar\n");
-//            }
-//            usleep(10000);
-//        } while((fds.revents & POLLIN) == 0);
-
-        struct sockaddr_in sender_address;
-        socklen_t sender_address_len = sizeof(sender_address);
-        int nbytes = recvfrom(sockfd, &lidarPackets[lidarPacketBufferHead], sizeof(LidarPacket), 0, (struct sockaddr *) &sender_address, &sender_address_len);
-
-        // printf("nbytes = %d %ld\n", (int)nbytes, sizeof(LidarPacket));
-
-        if (nbytes < 0) {
-            if (errno != EWOULDBLOCK) {
-                perror("recvfail");
-            }
+    while(run && lidarServerParams.threadStarted == 0) {
+        printf("waiting for lidar service to start\n");
+        if(lidarServerParams.errorCode != 0) {
+            printf("error code %d encountered starting lidar service", lidarServerParams.errorCode);
+            break;
         }
-
-        if (nbytes == sizeof(LidarPacket)) {
-            LidarPacket *packet = &lidarPackets[lidarPacketBufferHead];
-            lidarPacketBufferHead = (lidarPacketBufferHead + 1) % lidarPacketBufferSize;
-            if(isBeginningPacket(packet) && (nPackets >= (packet0Index + 10))) {
-                packet0Index = nPackets;
-                printf("found beginning packet. previous index = %d\n", pointCloudIndex);
-                analyzePointCloud(pointCloud, pointCloudIndex);
-                pointCloudIndex = 0;
-//                dumpLidarPacket(packet);
-                ++nCycles;
-                time_t deltaTime = time(0) - t0;
-                if (deltaTime > 0) {
-                    printf("frequency = %d/%ld = %ld\n", nCycles, deltaTime, nCycles / deltaTime);
-                }
-            }
-            ++nPackets;
-            int n = convertLidarPacketToLidarData(packet, &pointCloud[pointCloudIndex]);
-            pointCloudIndex += n;
-        }
-
     }
-}
-
-void clearHistogram(int *histogram, int nX) {
-    memset(histogram, 0, sizeof(int) * nX);
-}
-
-void fillHistogram(int *histogram, int x) {
-    ++histogram[x];
-}
-
-void fillHistogram(int *histogram, int nX, int x, int y) {
-    ++histogram[y * nX + x];
-}
-
-int histogramIntensity[nChannels][256];
-int histogramAzimuth[nChannels][256];
-int histogramIntensityAzimuth[nChannels][256 * 256];
-void analyzePointCloud(LidarData *data, int nPoints) {
-    int iChannel, iPoint;
-    LidarData *datum = data;
-    for(iChannel=0;iChannel<nChannels;++iChannel) {
-        clearHistogram(histogramAzimuth[iChannel], 256);
-        clearHistogram(histogramIntensity[iChannel], 256);
-        clearHistogram(histogramIntensityAzimuth[iChannel], 256 * 256);
+    if(lidarServerParams.errorCode == 0) {
+        printf("lidar service started\n");
     }
-    for(iPoint=0;iPoint<nPoints;++iPoint,++datum) {
-        int intensity = datum->intensity & 0xff;
-        int azimuth = ((int)(datum->phi * invTwoPi * 255.0)) & 0xff;
-        int channel = datum->channel;
-        fillHistogram(histogramIntensity[channel], intensity);
-        fillHistogram(histogramAzimuth[channel], azimuth);
-        fillHistogram(histogramIntensityAzimuth[channel], 256, azimuth, intensity);
+
+    while(run) {
+        sleep(1);
+        printf("running...\n");
     }
+
+    char *thread_result;
+    pthread_join(tid[LidarThreadId], (void**) &thread_result);
+    printf("goodbye\n");
+
 }
+
