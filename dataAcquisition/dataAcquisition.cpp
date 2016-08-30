@@ -1,6 +1,7 @@
 #include <signal.h>
 #include <fcntl.h>
-#include "geometry.h"
+#include <cstdio>
+#include <unistd.h>
 #include "lidar.h"
 #include "dataAcquisition.h"
 #include "common.h"

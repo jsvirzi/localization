@@ -13,13 +13,9 @@
 #include <sys/file.h>
 #include <math.h>
 #include <csignal>
+#include <time.h>
 
-#include "geometry.h"
 #include "lidar.h"
-#include "common.h"
-
-//#define BUFSIZE 1300
-//unsigned char buf [ BUFSIZE ];
 
 static int *run = 0;
 static void stop(int sig) {

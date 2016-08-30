@@ -3,8 +3,6 @@
 
 #include <TMatrixD.h>
 
-const double invTwoPi = 1.0 / (2.0 * M_PI);
-
 typedef struct {
     double x, y, z;
 } Vector3;
