@@ -138,3 +138,32 @@ int main(int argc, char **argv) {
 
 }
 
+void clearHistogram(int *histogram, int nX) {
+    memset(histogram, 0, sizeof(int) * nX);
+}
+
+void fillHistogram(int *histogram, int x) {
+    ++histogram[x];
+}
+
+void fillHistogram(int *histogram, int nX, int x, int y) {
+    ++histogram[y * nX + x];
+}
+
+void analyzePointCloud(LidarData *data, int nPoints) {
+    int iChannel, iPoint;
+    LidarData *datum = data;
+    for(iChannel=0;iChannel<nChannels;++iChannel) {
+        clearHistogram(histogramAzimuth[iChannel], 256);
+        clearHistogram(histogramIntensity[iChannel], 256);
+        clearHistogram(histogramIntensityAzimuth[iChannel], 256 * 256);
+    }
+    for(iPoint=0;iPoint<nPoints;++iPoint,++datum) {
+        int intensity = datum->intensity & 0xff;
+        int azimuth = ((int)(datum->phi * invTwoPi * 255.0)) & 0xff;
+        int channel = datum->channel;
+        fillHistogram(histogramIntensity[channel], intensity);
+        fillHistogram(histogramAzimuth[channel], azimuth);
+        fillHistogram(histogramIntensityAzimuth[channel], 256, azimuth, intensity);
+    }
+}

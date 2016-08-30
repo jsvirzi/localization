@@ -11,6 +11,9 @@
     <content url="file://$MODULE_DIR$/../lidar/lidar.cpp">
       <sourceFolder url="file://$MODULE_DIR$/../lidar/lidar.cpp" isTestSource="false" />
     </content>
+    <content url="file://$MODULE_DIR$/../utils/utils.cpp">
+      <sourceFolder url="file://$MODULE_DIR$/../utils/utils.cpp" isTestSource="false" />
+    </content>
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module-library">
       <library name="Header Search Paths">
@@ -22,6 +25,7 @@
           <root url="file://$MODULE_DIR$/../dataAcquisition" />
           <root url="file://$MODULE_DIR$/../lidar" />
           <root url="file://$MODULE_DIR$/../include" />
+          <root url="file://$MODULE_DIR$/../utils" />
         </CLASSES>
         <SOURCES>
           <root url="file:///usr/lib/gcc/x86_64-linux-gnu/4.8/include-fixed" />
@@ -31,10 +35,12 @@
           <root url="file://$MODULE_DIR$/../dataAcquisition" />
           <root url="file://$MODULE_DIR$/../lidar" />
           <root url="file://$MODULE_DIR$/../include" />
+          <root url="file://$MODULE_DIR$/../utils" />
         </SOURCES>
         <excluded>
           <root url="file://$MODULE_DIR$/../dataAcquisition/dataAcquisition.cpp" />
           <root url="file://$MODULE_DIR$/../lidar/lidar.cpp" />
+          <root url="file://$MODULE_DIR$/../utils/utils.cpp" />
         </excluded>
       </library>
     </orderEntry>

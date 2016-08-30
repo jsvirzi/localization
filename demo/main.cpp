@@ -16,6 +16,9 @@
 #include <sys/file.h>
 #include <math.h>
 #include <csignal>
+#include <dataAcquisition.h>
+#include <lidar.h>
+#include <common.h>
 
 #include "lidar.h"
 #include "dataAcquisition.h"
@@ -24,17 +27,11 @@ static int run = 1;
 
 static void stop(int sig) {
     run = 0;
-    printf("SIGINT received. shutting down application\n");
+    printf("SIGINT received. shutting down application. run = %d\n", run);
     // syslog(LOG_NOTICE, "imu: sig %d received", sig);
 }
 
-void test();
-
 const int nLidarPackets = 1024;
-//LidarPacket lidarPackets[NLIDARPACKETS];
-//int lidarPacketBufferHead = 0;
-//int lidarPacketBufferSize = NLIDARPACKETS;
-//void *lidarLloop(void *p);
 
 enum {
     LidarThreadId = 0,
@@ -50,6 +47,7 @@ int waitForThreadToStart(ThreadParams *threadParams) {
             printf("error code %d encountered starting %s service", threadParams->errorCode, threadParams->threadName);
             break;
         }
+        sleep(1);
     }
 
     if(threadParams->errorCode == 0) {
@@ -62,16 +60,21 @@ int waitForThreadToStart(ThreadParams *threadParams) {
 int waitForThreadToStop(ThreadParams *threadParams) {
     char *threadResult;
     pthread_join(threadParams->tid, (void **)&threadResult);
+    return 0;
 }
 
 int main(int argc, char **argv) {
 
     int i, err;
-    std::string ofile = "dataAcquisition.jsv";
+    std::string ofile = "/home/jsvirzi/projects/dataAcquisition.jsv";
+//    std::string ipAddress = "192.168.2.200";
+    std::string ipAddress;
 
     for(i=1;i<argc;++i) {
         if(strcmp(argv[i], "-o") == 0) {
             ofile = argv[++i];
+        } else if(strcmp(argv[i], "-ip") == 0) {
+            ipAddress = argv[++i];
         }
     }
 
@@ -86,8 +89,6 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    // test();
-
     signal(SIGINT, stop); /* exception handling */
     signal(SIGTERM, stop); /* exception handling */
 
@@ -101,6 +102,11 @@ int main(int argc, char **argv) {
     threadParams->run = 1;
     threadParams->errorCode = 0;
     threadParams->threadName = "lidar";
+    if(ipAddress.length()) {
+        lidarServerParams.ipAddress = ipAddress.c_str();
+    } else {
+        lidarServerParams.ipAddress = 0;
+    }
     lidarServerParams.packetBufferSize = nLidarPackets;
     lidarServerParams.packetBuffer = new LidarPacket[nLidarPackets];
     lidarServerParams.packetBufferHead = 0;
@@ -120,19 +126,25 @@ int main(int argc, char **argv) {
     dataAcquisitionParams.lidarPacketBuffer = lidarServerParams.packetBuffer;
     dataAcquisitionParams.lidarPacketTail = 0;
     dataAcquisitionParams.lidarPacketSize = nLidarPackets;
+    dataAcquisitionParams.lidarServerParams = &lidarServerParams;
+    dataAcquisitionParams.filename = ofile.c_str();
     err = pthread_create(&tid[DataAcquisitionThreadId], NULL, dataAcquisitionLoop, &dataAcquisitionParams);
     threadParams->tid = tid[DataAcquisitionThreadId];
 
     if(waitForThreadToStart(threadParams) != 0) { printf("problems in paradise"); exit(1); }
 
     while(run) {
+        if((lidarServerParams.threadParams.run == 0) || (dataAcquisitionParams.threadParams.run == 0)) {
+            printf("a child thread received SIG_INT. shutting down\n");
+            run = 0;
+        }
         sleep(1);
-        printf("running...\n");
+        printf("running...%d\n", run);
     }
 
+    printf("main loop terminated. shutting down threads\n");
     waitForThreadToStop(&lidarServerParams.threadParams);
     waitForThreadToStop(&dataAcquisitionParams.threadParams);
     printf("goodbye\n");
 
 }
-

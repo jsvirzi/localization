@@ -17,4 +17,10 @@ typedef struct {
 
 const double invTwoPi = 1.0 / (2.0 * M_PI);
 
+enum {
+    LidarPackedId = 1
+};
+
+const int syncWord = 0xfeedbeef;
+
 #endif

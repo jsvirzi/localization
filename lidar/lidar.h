@@ -46,7 +46,7 @@ typedef struct {
     LidarPacket *packetBuffer;
     int packetBufferHead;
     int packetBufferSize;
-    // int *packetTail;
+    const char *ipAddress;
 } LidarServerParams;
 
 void *lidarLoop(void *ptr);

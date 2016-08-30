@@ -115,9 +115,14 @@ void dumpLidarPacket(LidarPacket *packet) {
         LidarDataBlock *lidarDataBlock = &packet->dataBlock[iBlock];
         double azimuth = getAzimuth(lidarDataBlock);
         printf("flag(%d) = 0x%x. azimuth = %.3f(rad) = %.3f(deg)\n", iBlock, packet->dataBlock[iBlock].flag, azimuth, azimuth * 180.0 / M_PI);
-//        double azimuth = lidarDataBlock->azimuth
-//        printf("")
+        LidarChannelDatum *datum = lidarDataBlock->data;
+        int iData;
+        for(iData=0;iData<32;++iData,++datum) {
+            printf("0x%2.2x ", datum->reflectivity);
+        }
+        printf("\n");
     }
+    getchar();
 }
 
 double getAzimuth(LidarDataBlock *block) {
@@ -125,7 +130,7 @@ double getAzimuth(LidarDataBlock *block) {
     unsigned char azimuthHi = block->azimuthHi;
     int azimuthData = azimuthHi;
     azimuthData = (azimuthData << 8) | azimuthLo;
-    double azimuth = azimuthData * M_PI / 18000.0;
+    double azimuth = azimuthData * M_PI / 18000.0; // azimuth is reported in 0.01 degrees. convert to radians
     return azimuth;
 }
 
@@ -145,11 +150,19 @@ void *lidarLoop(void *ptr) {
     int sockfd = socket(PF_INET, SOCK_DGRAM, 0);
     if (sockfd == -1) { perror("socket"); threadParams->errorCode = -1; return 0; }
 
-    struct sockaddr_in my_addr;                     // my address information
-    memset(&my_addr, 0, sizeof(my_addr));    // initialize to zeros
-    my_addr.sin_family = AF_INET;            // host byte order
-    my_addr.sin_port = htons(port);          // port in network byte order
-    my_addr.sin_addr.s_addr = INADDR_ANY;    // automatically fill in my IP
+    int optval;
+    socklen_t optlen = sizeof(optval);
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &optval, optlen);
+
+    struct sockaddr_in my_addr;
+    memset(&my_addr, 0, sizeof(my_addr));
+    my_addr.sin_family = AF_INET; // host byte order
+    my_addr.sin_port = htons(port); // port in network byte order
+    if(lidarServerParams->ipAddress == 0) {
+        my_addr.sin_addr.s_addr = INADDR_ANY; // automatically fill in my IP
+    } else {
+        my_addr.sin_addr.s_addr = inet_addr(lidarServerParams->ipAddress); // specify IP address
+    }
 
     if (bind(sockfd, (struct sockaddr *) &my_addr, sizeof(struct sockaddr)) == -1) { perror("bind"); }
 
@@ -182,7 +195,10 @@ void *lidarLoop(void *ptr) {
 
         struct sockaddr_in sender_address;
         socklen_t sender_address_len = sizeof(sender_address);
-        int nbytes = recvfrom(sockfd, &lidarServerParams->packetBuffer[lidarServerParams->packetBufferHead], sizeof(LidarPacket), 0, (struct sockaddr *) &sender_address, &sender_address_len);
+        memset(&sender_address, 0, sender_address_len);
+        int bufferSize = sizeof(LidarPacket);
+        void *buffer = &lidarServerParams->packetBuffer[lidarServerParams->packetBufferHead];
+        int nbytes = recvfrom(sockfd, buffer, bufferSize, 0, (struct sockaddr *) &sender_address, &sender_address_len);
 
         // printf("nbytes = %d %ld\n", (int)nbytes, sizeof(LidarPacket));
 
@@ -198,7 +214,7 @@ void *lidarLoop(void *ptr) {
             if(isBeginningPacket(packet) && (nPackets >= (packet0Index + 10))) {
                 packet0Index = nPackets;
                 printf("found beginning packet. previous index = %d\n", pointCloudIndex);
-                analyzePointCloud(pointCloud, pointCloudIndex);
+//                analyzePointCloud(pointCloud, pointCloudIndex);
                 pointCloudIndex = 0;
 //                dumpLidarPacket(packet);
                 ++nCycles;
@@ -220,35 +236,8 @@ void *lidarLoop(void *ptr) {
 
     threadParams->threadStarted = 0;
 
+    close(sockfd);
+
     return 0;
 }
 
-void clearHistogram(int *histogram, int nX) {
-    memset(histogram, 0, sizeof(int) * nX);
-}
-
-void fillHistogram(int *histogram, int x) {
-    ++histogram[x];
-}
-
-void fillHistogram(int *histogram, int nX, int x, int y) {
-    ++histogram[y * nX + x];
-}
-
-void analyzePointCloud(LidarData *data, int nPoints) {
-    int iChannel, iPoint;
-    LidarData *datum = data;
-    for(iChannel=0;iChannel<nChannels;++iChannel) {
-        clearHistogram(histogramAzimuth[iChannel], 256);
-        clearHistogram(histogramIntensity[iChannel], 256);
-        clearHistogram(histogramIntensityAzimuth[iChannel], 256 * 256);
-    }
-    for(iPoint=0;iPoint<nPoints;++iPoint,++datum) {
-        int intensity = datum->intensity & 0xff;
-        int azimuth = ((int)(datum->phi * invTwoPi * 255.0)) & 0xff;
-        int channel = datum->channel;
-        fillHistogram(histogramIntensity[channel], intensity);
-        fillHistogram(histogramAzimuth[channel], azimuth);
-        fillHistogram(histogramIntensityAzimuth[channel], 256, azimuth, intensity);
-    }
-}
