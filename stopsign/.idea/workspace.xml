@@ -11,22 +11,7 @@
     </ADDITIONAL_GENERATION_ENVIRONMENT>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a6d65f67-de00-4204-862f-d2d4a60ef230" name="Default" comment="added histograms for azimuth and intensity">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/../demo/.idea/demo.iml" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/../demo/.idea/misc.xml" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/../demo/.idea/modules.xml" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/../demo/.idea/workspace.xml" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/../demo/CMakeLists.txt" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/../demo/main.cpp" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/common.h" afterPath="$PROJECT_DIR$/../include/common.h" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/dataAcquisition.cpp" afterPath="$PROJECT_DIR$/../dataAcquisition/dataAcquisition.cpp" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/dataAcquisition.h" afterPath="$PROJECT_DIR$/../dataAcquisition/dataAcquisition.h" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/geometry.h" afterPath="$PROJECT_DIR$/../include/geometry.h" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/lidar.cpp" afterPath="$PROJECT_DIR$/../lidar/lidar.cpp" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/lidar.h" afterPath="$PROJECT_DIR$/../lidar/lidar.h" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/stopsign.iml" afterPath="$PROJECT_DIR$/.idea/stopsign.iml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-    </list>
+    <list default="true" id="a6d65f67-de00-4204-862f-d2d4a60ef230" name="Default" comment="added histograms for azimuth and intensity" />
     <ignored path="stopsign.iws" />
     <ignored path=".idea/workspace.xml" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -48,8 +33,8 @@
       <file leaf-file-name="CMakeLists.txt" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/CMakeLists.txt">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="220">
-              <caret line="10" column="0" selection-start-line="10" selection-start-column="0" selection-end-line="10" selection-end-column="0" />
+            <state relative-caret-position="66">
+              <caret line="3" column="57" selection-start-line="3" selection-start-column="40" selection-end-line="3" selection-end-column="59" />
               <folding />
             </state>
           </provider>
@@ -334,7 +319,7 @@
       <updated>1471064373312</updated>
       <workItem from="1471064375562" duration="16273000" />
       <workItem from="1472190995446" duration="18606000" />
-      <workItem from="1472511164060" duration="3276000" />
+      <workItem from="1472511164060" duration="3354000" />
     </task>
     <task id="LOCAL-00001" summary="obtain plane from point cloud using LMS">
       <created>1471073446519</created>
@@ -354,7 +339,7 @@
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="38155000" />
+    <option name="totallyTimeSpent" value="38233000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="2233" y="279" width="1945" height="1297" extended-state="0" />
@@ -773,8 +758,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/CMakeLists.txt">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="220">
-          <caret line="10" column="0" selection-start-line="10" selection-start-column="0" selection-end-line="10" selection-end-column="0" />
+        <state relative-caret-position="66">
+          <caret line="3" column="57" selection-start-line="3" selection-start-column="40" selection-end-line="3" selection-end-column="59" />
           <folding />
         </state>
       </provider>
